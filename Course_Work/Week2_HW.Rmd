@@ -171,7 +171,6 @@ Strengths <- round(Strengths, 3) * 100
 Strengths
 ```
 
-
 ## Decomposition Responses
 
  - 
