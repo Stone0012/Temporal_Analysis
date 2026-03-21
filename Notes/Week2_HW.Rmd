@@ -1,0 +1,219 @@
+---
+title: "Week 2 Homework"
+author: "Brandon Stonesifer"
+output:
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=F, message=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir="~/Desktop/School Files/Spring 26 Classes/Spatial_Tempral_Analysis/R")
+
+```
+
+
+```{r packages, include=F, message=F}
+library("ggplot2")
+library("quantmod")
+library("fpp2")
+library("leaps")
+library("stringr")
+library("seasonal") 
+```
+
+
+# Time Series Regression Exercises
+
+(a) Use "uschange" dataset with response, Consumption, and predictors, Income, Savings, Unemployment, trend and season, to fit a linear regression. Check the model fit with residuals, and compare how the model has changed (estimates and significance of the parameters, AIC, BIC) from what you obtained in 1 in this notebook. 
+
+(b) Use "euretail" dataset and fit a linear regression with predictors, piecewise linear trend and season. Make forecasts for the next 10 observations.  Draw a plot with original response overlaid with the predicted values.
+
+```{r}
+data(uschange)
+data(euretail)
+```
+
+## A 
+
+```{r}
+TSRE_A <- tslm(Consumption ~ Income + Savings + Unemployment + trend + season, data = uschange)
+```
+
+
+```{r}
+checkresiduals(TSRE_A)
+qqnorm(rstudent(TSRE_A))
+```
+
+## B
+
+```{r}
+TSRE_B <- tslm(euretail ~ trend + season)
+```
+
+
+```{r}
+fit <- tslm(euretail ~ trend + I(pmax(trend - 48, 0))+ season)
+```
+
+
+```{r}
+TSRE_B2 <- forecast(fit, h = 10)
+```
+
+
+```{r}
+autoplot(euretail)+
+  autolayer(fitted(fit), series = "Fitted value")+ 
+  autolayer(TSRE_B2$mean, series = "Forecast")
+  
+```
+
+
+## Time Series Regression Responses 
+
+ - (a) 
+ - (b)
+
+# Decomposition Exercises 
+
+1. Use built-in AirPassengers dataset in R. 
+
+(a) Apply additive and multiplicative classical decomposition methods. For each method, draw a plot where data, seasonal adjusted estimate, trend and trend+seasonal (trend*seasonal for multiplicative method) are overlaid. Which method produces better results, and why?
+
+(b) Apply other decomposition methods, X11 method and STL decomposition methods. For each method, draw a plot where data, seasonal adjusted estimate, trend are overlaid. Compare the results of the two methods and also the classical methods from (a).
+
+(c) Compute seasonal strength $F_s$ from each method you applied in (a-b).
+
+```{r}
+data(AirPassengers)
+```
+
+## A
+
+```{r}
+DE_AA <- decompose(AirPassengers, type = "additive")
+DE_AM <- decompose(AirPassengers, type = "mult")
+
+autoplot(DE_AA)
+autoplot(DE_AM)
+```
+
+```{r, warning=FALSE}
+autoplot(AirPassengers, series="Data") +
+  autolayer(trendcycle(DE_AA), series="Trend") +
+  autolayer(trendcycle(DE_AA)+seasonal(DE_AA), series="Trend+Seasonal") +
+  autolayer(seasadj(DE_AA), series="Seasonally Adjusted") +
+  scale_colour_manual(values=c("black","blue","red","green"),
+      breaks=c("Data","Seasonally Adjusted","Trend","Trend+Seasonal"))
+```
+
+```{r, warning=FALSE}
+autoplot(AirPassengers, series="Data") +
+  autolayer(trendcycle(DE_AM), series="Trend") +
+  autolayer(trendcycle(DE_AM)*seasonal(DE_AM), series="Trend*Seasonal") +
+  autolayer(seasadj(DE_AM), series="Seasonally Adjusted") +
+  scale_colour_manual(values=c("black","blue","red","green"),
+      breaks=c("Data","Seasonally Adjusted","Trend","Trend*Seasonal"))
+```
+
+## B
+
+```{r}
+DE_x11 <- seasonal::seas(AirPassengers, x11 = "", transform.function = "none")
+DE_STL <- stl(AirPassengers, s.window = 7, t.window = 13)
+```
+
+
+```{r}
+autoplot(AirPassengers, series="Data") +
+  autolayer(trendcycle(DE_x11), series="Trend") +
+  autolayer(seasadj(DE_x11), series="Seasonally Adjusted") +
+  scale_colour_manual(values=c("grey","blue","red"),
+      breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+
+```{r}
+autoplot(AirPassengers, series="Data") +
+  autolayer(trendcycle(DE_STL), series="Trend") +
+  autolayer(seasadj(DE_STL), series="Seasonally Adjusted") +
+  scale_colour_manual(values=c("grey","blue","red"),
+      breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+
+
+## C
+
+```{r}
+DE_x11_strength <- (1 - var(remainder(DE_x11))/var(seasonal(DE_x11) + 
+                                              remainder(DE_x11))) %>% max(0, .)
+
+DE_STL_strength <- (1 - var(remainder(DE_STL))/var(seasonal(DE_STL) + 
+                                              remainder(DE_STL))) %>% max(0, .)
+
+DE_AA_strength  <- (1 - var(remainder(DE_AA), na.rm=TRUE)/var(seasonal(DE_AA) + 
+                                              remainder(DE_AA), na.rm=TRUE)) %>% max(0, .)
+
+DE_AM_strength  <- (1 - var(remainder(DE_AM), na.rm=TRUE)/var(seasonal(DE_AM) + 
+                                              remainder(DE_AM), na.rm=TRUE)) %>% max(0, .)
+
+
+Strengths <- rbind(
+  X11 = DE_x11_strength,
+  STL = DE_STL_strength,
+  Additive  = DE_AA_strength,
+  Miltiplitve  = DE_AM_strength
+)
+
+colnames(Strengths) <- "Seasonality Strength"
+Strengths <- round(Strengths, 3) * 100
+Strengths
+```
+
+## Decomposition Responses
+
+ - 
+ 
+# Smoothing Exercises
+ 
+ 1. Use built-in AirPassengers dataset in R. 
+ 
+(a) Draw a plot where training data, testing data, forecast from the four methods are overlaid. Visually examine the plot, and describe the results. Which method produces the best forecasting results? Why do you think that method was most effective?
+
+(b) Compare the four methods by accuracy measures (MAE, RMSE, MAPE, MASE) using forecasting error. Which method produces the best forecasting results according to which accuracy measure?
+
+(c) Apply `ets()` function to the training dataset (do not specify the model so that R can choose it), obtain the forecast for the next 12 observations, and accuracy measures of the method. Draw a plot where training data, testing data, and forecasts from the five methods in (a,c) are overlaid. Also, compare the results from accuracy measures. Which method produces the best results? Why do you think that method was the most effective?
+
+```{r}
+data(AirPassengers)
+```
+
+## A
+
+```{r}
+
+```
+
+## B
+
+```{r}
+
+```
+
+## C
+
+```{r}
+
+```
+
+
+## Smothing Responses
+
+  - 
+
+
+
+
+
+
