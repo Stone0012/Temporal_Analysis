@@ -1,0 +1,207 @@
+---
+title: "Time Series Linear Regression"
+output: html_notebook
+---
+
+
+
+# 1. Use other features as predictors
+
+
+# $$ y_t=x_{1t}+x_{2t}+\cdots +x_{kt}+e_{t}  $$
+
+`tslm()` is similar to `lm()`, but has extra functionality for time series.
+
+plot `uschange`
+```{r}
+library(fpp2)
+autoplot(uschange, facets = TRUE)
+```
+
+
+We can think of a (multi-variate) time series as a data frame **where each row is ordered**.
+
+
+Consumption ~ Income + Savings + Unemployment
+
+
+```{r}
+fitISU <- tslm(Consumption ~ Income + Savings + Unemployment, data = uschange)
+summary(fitISU)
+```
+
+Fitted model equation:
+
+$$\hat y_t= 0.28+ 0.73x_{1t}-0.05 x_{2t} -0.34 x_{3t},$$ where
+
+$y_t$=Consumption at time $t$
+
+$x_{1t}$=Income at time $t$
+
+$x_{2t}$=Savings at time $t$
+
+$x_{3t}$=Unemployment at time $t$
+
+
+
+Model diagnostics with residuals:
+```{r}
+hist(fitISU$residuals)
+hist(rstudent(fitISU))
+plot(y=rstudent(fitISU),x=as.vector(time(uschange)),
+xlab='Time',ylab='Standardized Residuals',type='o')
+qqnorm(rstudent(fitISU))
+plot(y=rstudent(fitISU),x=as.vector(fitted(fitISU)),
+xlab='Fitted Trend Values',
+ylab='Standardized Residuals')
+```
+
+The `forecast` function is similar to `predict()`.
+
+
+For the future values of Income, Savings and Unemployment, each would need to have its own forecast. Let's suppose that we have already forecasted the future 2 values of these 3 variables.
+
+```{r}
+futureISU <- data.frame(Income = c(1, 1.5),
+                      Savings = c(5, 5.5),
+                      Unemployment = c(0.1, -0.1))
+forecast1 <- forecast(fitISU, newdata = futureISU, level = 0.95)
+forecast1
+```
+
+plot Consumption and the forecast
+```{r}
+autoplot(uschange[, 'Consumption']) +
+  autolayer(forecast1, PI = FALSE)
+```
+
+# 2. Create time-dependent predictors 
+Let's use 
+```{r}
+autoplot(euretail)
+```
+
+
+## linear trend
+model $y_t=\beta_0+\beta_1*t+\epsilon_t$
+```{r}
+N <- length(euretail)
+t <- 1:N
+fit.t <- tslm(euretail ~ t)
+```
+
+Plot fitted values
+```{r}
+autoplot(euretail) +
+  autolayer(fitted(fit.t), series = "fitted value")
+```
+
+## linear trend: R
+`tslm(y ~ trend)`
+```{r}
+fit.t2 <- tslm(euretail ~ trend)
+cbind(fitted(fit.t), fitted(fit.t2))[1:4,]
+```
+
+
+## add seasonality 
+need to create dummy variables (or indicator variables) for each quarter
+
+q1 = 1 if it is quarter 1, = 0 elsewhere
+```{r}
+head(euretail) # y started at Q1
+```
+
+```{r}
+q1 <- rep(c(1, 0, 0, 0), length.out = N)
+```
+
+
+create q2, q3 similarly
+```{r}
+q2 <- rep(c(0, 1, 0, 0), length.out = N)
+q3 <- rep(c(0, 0, 1, 0), length.out = N)
+```
+
+
+q4 is represented by all 0's. we do not need to create q4 because we have an intercept.
+
+```{r}
+# use both trend and seasonality as predictors
+fit.t.s <- tslm(euretail ~ t + q1 + q2 + q3)
+autoplot(euretail) +
+  autolayer(fitted(fit.t.s))
+```
+
+forecast using the model `fit.t.s`
+```{r}
+h <- 4
+forecast(fit.t.s, newdata = data.frame(t = seq(N + 1, N + h),
+                                      q1, q2, q3))
+
+```
+
+
+## add seasonality: R
+`tslm(y ~ trend + season)`
+```{r}
+fit.t.s2 <- tslm(euretail ~ trend + season)
+summary(fit.t.s2)
+```
+
+forecast is easier too if using built-in R function.
+```{r}
+forecast(fit.t.s2, h = 4)
+```
+
+
+
+## More use of indicator variables
+* model interventions such as holidays, competitor activity, industrial action, etc. Add a variable that equals 1 on the special event and 0 elsewhere. If the intervention causes a level shift, then we will let it equal 1 on the event and onward.
+* deal with outliers. Add a variable that equals 1 at the outlier location and 0 elsewhere.
+
+
+
+## Piecewise linear fit
+When we see clear historical break points in a time series, we can fit it with piecewise linear functions.
+
+These points, where the slopes are changing, are called knots. Suppose the knots are $c_2, c_3, \cdots, c_M$, then we are going to define M regressors (predictors) as follows
+$$x_1 = t, x_2=(t-c_2)_+, x_3 = (t-c_3)_+, \cdots, x_M = (t-c_M)_+$$
+The notation $(t-c)_+$ means it equals 0 for $t<c$ and equals $t-c$ elsewhere.
+
+```{r}
+autoplot(euretail)
+```
+
+```{r}
+# find c2
+c2 <- which.max(euretail)
+c2
+```
+
+pmax will return point-wise max (compared two vectors coordinate-wise)
+```{r}
+pmax(c(1, 2, -1), c(0, 0, 0))
+```
+
+At index 48, the vector is obtaining its maximum.
+```{r}
+# make x1, x2
+x1 <- t
+x2 <- pmax(t - c2, 0)
+```
+
+fit with x1, x2
+```{r}
+fit.pl <- tslm(euretail ~ x1 + x2)
+autoplot(euretail)+
+  autolayer(fitted(fit.pl), series = "Fitted value")
+```
+
+```{r}
+summary(fit.pl)
+```
+
+# Exercise
+1. Use "uschange" dataset with response, Consumption, and predictors, Income, Savings, Unemployment, trend and season, to fit a linear regression. Check the model fit with residuals, and compare how the model has changed (estimates and significance of the parameters, AIC, BIC) from what you obtained in 1 in this notebook. 
+2. Use "euretail" dataset and fit a linear regression with predictors, piecewise linear trend and season. Make forecasts for the next 10 observations.  Draw a plot with original response overlaid with the predicted values. 

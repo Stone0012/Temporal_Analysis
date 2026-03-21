@@ -1,0 +1,335 @@
+---
+title: "Regression"
+output: html_notebook
+---
+```{r}
+#install.packages("leaps")
+#install.packages("stringr")
+#install.packages("modeldata")
+```
+
+
+
+```{r, warning=FALSE}
+library(ggplot2) #plot
+library(leaps) # for stepwise or exhaustive search
+library(stringr) # some string methods
+library(modeldata)
+```
+
+This notebook is about regression only (not involving time series yet)
+
+# 1. Linear Regression overview
+**Regression** (in statistics) is used to estimate/predict an output (Y) that is numerical (quantitative) based on predictors/features (X).
+
+Linear regression is the first type of regression analysis to be studied rigorously, and to be used extensively in practical applications. **It is simple yet powerful.**
+
+The goal is to build a linear regression model that has high performance metrics, low complexity, and good interpretability. 
+
+Mathematically, we try to find a **linear** relationship between the output/response $Y$ and the inputs/predictors/features $X_1, X_2, ..., X_p$.
+$$Y = \beta_0 + \beta_1X_1 + \beta_2X_2+\cdots+\beta_pX_p + \text{noise}.$$
+
+If there is only 1 predictor (p = 1), then it is called **Simple Linear Regression**.
+
+## Coefficient estimation
+We will illustrate with p = 2, but it is the same idea for bigger p.
+$$Y = \beta_0+\beta_1X_1 + \beta_2 X_2$$
+With a dataset, we will solve $\beta_0, \beta_1, \beta_2$ **approximately** from the following system of linear equations:
+$$
+y_1 = \beta_0 + \beta_1x_{1,1}+\beta_2x_{2, 1}\\
+y_2 = \beta_0 + \beta_1x_{2, 1}+\beta_2x_{2, 2}\\
+\vdots\\
+y_n = \beta_0 + \beta_1x_{n, 1}+\beta_2x_{n,2}
+$$
+
+## `lm()` syntax
+* `fit <- lm(y ~ x1 + x2, data = df)`: use columns "x1" and "x2" of `df` as predictors
+* `fit <- lm(y ~ ., data = df)`: uses all columns (other than y) in `df`
+* `fit <- lm(y ~ . - x1, data = df)`: uses all columns (other than y, x1) in `df`
+* `fit2 <- update(fit, ~. - x3)`: update an existing linear regression model `fit` to exclude column "x3".
+* `summary(fit)`: gives a good summary
+
+
+
+# 2. Ames housing data
+```{r}
+ames <- modeldata::ames
+```
+
+Common functions for a df:
+- `head(df)`
+- `dim(df)`
+- `colnames(df)`
+
+`class()`, `table()`
+
+```{r}
+dim(ames)
+```
+
+
+a data frame can be viewed as a list of columns. One can use `$` to retrieve any column
+```{r}
+colnames(ames)
+```
+
+```{r}
+class(ames)
+dim(ames)
+head(ames)
+colnames(ames)
+```
+
+
+The following two lines are both extracting 1st column.
+```{r}
+#ames$MS_SubClass
+#ames[, 1]
+```
+
+plot
+```{r}
+ggplot(data = ames, 
+       mapping = aes(x = Longitude, y = Latitude, color = Lot_Shape)) +
+  geom_point(
+             size = 0.5)
+```
+
+
+# 3. Some practice on `lm`
+
+Gr_Liv_Area + TotRms_AbvGrd
+```{r}
+fit1 <- lm(Sale_Price ~ Gr_Liv_Area + TotRms_AbvGrd, data = ames)
+summary(fit1)
+```
+
+X1 = Gr_Liv_Area, X2 = TotRms_AbvGrd, Y = Sale_Price
+
+Y ≈ 42767.636 + 139.408\*X1 -11025.870\*X2
+
+```{r}
+# use update function to add First_Flr_SF and Second_Flr_SF
+#fit2 
+fit2 <- update(fit1, ~. + First_Flr_SF + Second_Flr_SF)
+summary(fit2)
+```
+
+Output interpretation:
+
+* Small p-value (usually <= 0.05) indicates the corresponding feature does affect y. (has statistical significance)
+* Big p-value (usually > 0.05) indicates the corresponding feature is not important **given the presence of other features**. For example, "Gr_Liv_Area" is very correlated to "Sale_Price", but it can be disgarded **given we have First_Flr_SF and Second_Flr_SF.**
+ 
+
+## categorical variables
+If a column is a factor, then the `lm()` function will automatically do one-hot coding and turn a factor of K categories to K - 1 variables. 
+
+For example, we saw "Lot_Shape" is categorical with 4 levels/categories. This is reflected in the summary.
+```{r}
+fit3 <- lm(Sale_Price ~ Gr_Liv_Area + TotRms_AbvGrd + Lot_Shape, data = ames)
+summary(fit3)
+```
+
+## `predict()`
+
+The newdata needs to be a data frame that has at least columns used by the model.
+```{r}
+predict(fit1, newdata = data.frame(Gr_Liv_Area = c(2000, 3000),
+                                   TotRms_AbvGrd = c(5, 6)))
+```
+
+```{r}
+predict(fit1, newdata = ames[1,])
+```
+
+
+# 4. feature/model selection for linear regression
+
+## 4.1 exhaustive search or stepwise search
+
+The following are common performance metrics for model selection:
+
+*  $R^2$ (not recommended): This is called the Coefficient of Determination. $R^2 = \frac{\sum(\hat y_t-\bar y)^2}{\sum(y_t-\bar y)^2}$. This is a number between 0 and 1, and measures the percentage of variation in $Y$ that is explained by predictors through regression. $R^2 = 1$ means a perfect fit; 100$\%$ of variation in $Y$ is explained  by $X$, i.e., perfect linear relationship between the response and predictors.
+
+   + As $p$ increases, $R^2$ will increase. One can get a model with $R^2$ close to 1 by adding increasingly more variables. This leads to overfitting. So it is better to use a measure that penalizes adding a variable. All measures below penalizes variable adding.
+
+* Adjusted $R^2$: $\bar R^2=1-(1-R^2)\frac{n-1}{n-p-1}$, where $p$ is the number of predictors. Maximizing $\bar R^2$ works OK as a method of selecting predictors, although it still tends to select more predictors.
+* AIC, AICc, BIC and Mallows Cp are more commonly used for model evaluation and selection. These are an unbiased estimate of the model prediction error, MSE. The lower these metrics, he better the model.
+* AIC: Akaike's Information Criterion. The smaller, the better.
+* AICc: Corrected Akaike's Information Criterion. The smaller, the better.
+* BIC: Schwarz's Baysian Information Criterion. The smaller, the better. BIC tends to penalize the addition of features more than AIC.
+* Mallows Cp: A variant of AIC developed by Colin Mallows. The smaller, the better.
+
+
+### the idea of backward search
+Great function to show the data type of each column of a df.
+```{r}
+sapply(ames, class)
+```
+
+get value counts of each category.
+```{r}
+table(ames$MS_SubClass)
+```
+
+```{r results = 'hide'}
+fit_all <- lm(Sale_Price ~ ., data = ames)
+#summary(fit_all)
+summary(fit_all)$adj.r.squared
+```
+
+
+Looking at the above summary roughly, we see that the feature "Electrical" is not significant, now we fit a different model with "Electrical" removed.
+
+\- Electrical
+```{r}
+fit_all2 <- lm(Sale_Price ~ .  - Electrical, data = ames)
+s <- summary(fit_all2)
+s$adj.r.squared
+```
+
+use bic to compare these two models. BIC(fit1, fit2)
+```{r}
+BIC(fit_all, fit_all2)
+```
+
+fit_all2 model is the winner, whether using adjust R2 or BIC.
+
+
+### `regsubsets()`
+The "leaps" package can do model selection based on R2, adjusted R2, AIC, or BIC.
+
+`regsubsets(formula, data = df, method = c("exhaustive", "backward", "forward"), nvmax = )`
+
+
+
+* exhaustive: For a fixed $p$, it will find the best set of $p$ features and the result is shown in the summary. It runs $2^M$ models where $M$ is the total number of variables (`nvmax`). 
+* backward (way more efficient): we start with ALL features, such as `fit_all`, and then we remove one feature at each iteration. Usually the feature with the highest p-value is removed. Once removed, it will never be added back in later stage.
+* forward (way more efficient): we start with 0 feature (only the intercept), and then add the one feature that is going to make the model the best at each iteration. Once added, it will always be kept in later stage.
+
+### toy example to illustrate summary output matrix.
+```{r}
+n <- 50
+x1 <- 1:n
+set.seed(1)
+x2 <- rnorm(n) + 5
+x3<- runif(n)
+x4 <- rexp(n, 1)
+y <- x1 + 1.5*x3+2*x4 +rnorm(n,0,1)
+df <- data.frame(x1 = x1,
+                 x2 = x2,
+                 x3 = x3,
+                 x4 = x4,
+                 y = y)
+reg.toy <- regsubsets(y ~ x1 + x2 + x3 + x4, data = df, method = "backward")
+summary(reg.toy)$outmat
+```
+
+**interpretation of the above output matrix**. An asterisk `*` means the feature was selected at that row. So for the toy example, using backward search:
+- at row 4: we start with all 4 variables;
+- at row 3: x2 was removed from the previous model. (if exactly 3 features are selected, it should be x1, x3, and x4.)
+- at row 2: x3 was removed from the previous model. (if exactly 2 feature is selected, it should be x1 and x4.)
+- at row 4: x4 was removed from the previous model. (if only one feature is selected, it should be x1.)
+
+### ames data
+```{r}
+#nvmax = 150
+regfit <- regsubsets(Sale_Price ~ ., data = ames, method = "backward", nvmax = 150)
+```
+
+
+```{r}
+regfit.s <- summary(regfit)
+dim(regfit.s$outmat)
+```
+
+number of columns = 276 because a total of 276 "features" were considered. `ames` only has 73 features, but many are categorical, which expands to 276 "features" using one hot coding.
+
+### How to use the summary output from regsubsets()
+#### If we only use 3 features/columns, which 3?
+```{r}
+which(regfit.s$outmat[3, ] == "*")
+```
+
+#### pick the best model using BIC
+```{r}
+ggplot() +
+  geom_line(aes(x = 1:151, y = regfit.s$bic)) +
+  labs(y = "BIC", x = "number of features p") +
+  scale_x_continuous(breaks = seq(0, 150, 10))
+```
+
+smaller BIC means better model. We can see that as number of features increase, the model becomes better. Starting around 80, the model worsens as p keeps increasing. The graph does not show the actual BIC of a model, it uses "Drop in BIC" comparing the model to the intercept-only model.
+
+```{r}
+#To find which one results in the lowest BIC
+best_idx <- which.min(regfit.s$bic)
+best_idx
+```
+
+Between all these 151 models, row 82 (82 features were picked) generates the best model using BIC. Therefore, we will choose this model.
+
+
+To see the chosen 82 predictors:
+```{r}
+fs <- names(which(regfit.s$outmat[best_idx, ] == "*"))
+#fs  or
+#regfit.s$which[82,]
+```
+
+Note that not all categories are chosen for a chosen categorical variable. 
+How can we actually obtain linear regression results with the chosen 82 predictors?
+
+```{r}
+# We need to first obtain the same list of predictors used in regression (the one where a factor of K categories was converted into K-1 variables)
+fullmodel<-model.matrix(Sale_Price ~ ., data = ames)
+P<-as.data.frame(fullmodel)
+D<-cbind(Sale_Price=ames$Sale_Price,P[,-1])
+# choose the 82 predictors
+fs <- names(which(regfit.s$outmat[best_idx, ] == "*"))
+selected_fs <- paste(fs, collapse = "+")
+paste("Sale_Price ~", selected_fs)
+formula_regsubset <- as.formula(paste("Sale_Price ~", selected_fs))
+```
+Now we try regression, but...
+```{r eval=FALSE}
+model_bic <- lm(formula_regsubset, data = D) # this does not work
+```
+
+If the name of a variable includes &, lm does not recognize it correctly. We need to manually correct it and put  `"` `"`  around its name.
+```{r}
+#formula_regsubset
+model_bic <- lm( Sale_Price ~ MS_SubClassOne_Story_1945_and_Older + MS_SubClassOne_and_Half_Story_Unfinished_All_Ages + 
+  MS_SubClassOne_and_Half_Story_Finished_All_Ages + MS_SubClassTwo_Story_1945_and_Older + 
+  MS_SubClassDuplex_All_Styles_and_Ages + MS_SubClassOne_Story_PUD_1946_and_Newer + 
+  MS_SubClassTwo_Story_PUD_1946_and_Newer + MS_SubClassPUD_Multilevel_Split_Level_Foyer + 
+  Lot_Area + Land_ContourHLS + Land_ContourLow + Land_SlopeSev + 
+  NeighborhoodSomerset + NeighborhoodNorthridge_Heights + NeighborhoodBrookside + 
+  NeighborhoodCrawford + NeighborhoodNorthridge + NeighborhoodStone_Brook + 
+  NeighborhoodBriardale + NeighborhoodNorthpark_Villa + NeighborhoodGreen_Hills + 
+  Condition_1Norm + Condition_1PosN + Condition_2PosA + Condition_2PosN + 
+  House_StyleOne_Story + Overall_CondAverage + Overall_CondAbove_Average + 
+  Overall_CondGood + Overall_CondVery_Good + Overall_CondExcellent + 
+  Year_Built + Year_Remod_Add + Roof_StyleHip + Roof_MatlCompShg + 
+  Roof_MatlMembran + Roof_MatlMetal + Roof_MatlRoll + `Roof_MatlTar&Grv` + Roof_MatlWdShake + Roof_MatlWdShngl + Exterior_1stBrkFace + 
+  Exterior_1stHdBoard + Exterior_1stPlywood + Exterior_2ndCmentBd + 
+  Mas_Vnr_TypeCBlock + Mas_Vnr_TypeNone + Mas_Vnr_TypeStone + 
+  Mas_Vnr_Area + Bsmt_ExposureGd + Bsmt_ExposureMn + Bsmt_ExposureNo + 
+  BsmtFin_Type_1LwQ + BsmtFin_Type_1Rec + BsmtFin_Type_1Unf + 
+  BsmtFin_SF_1 + BsmtFin_Type_2GLQ + BsmtFin_SF_2 + Bsmt_Unf_SF + 
+  Total_Bsmt_SF + Second_Flr_SF + Gr_Liv_Area + Bedroom_AbvGr + 
+  Kitchen_AbvGr + TotRms_AbvGrd + FunctionalTyp + Fireplaces + 
+  Garage_FinishRFn + Garage_Area + Screen_Porch + Pool_QCFair + 
+  Pool_QCGood + Pool_QCNo_Pool + Pool_QCTypical + Misc_FeatureGar2 + 
+  Misc_FeatureNone + Misc_FeatureOthr + Misc_FeatureShed + 
+  Misc_FeatureTenC + Sale_TypeNew + Sale_ConditionNormal + 
+  Longitude, data = D)
+#check the results
+BIC(model_bic)
+AIC(model_bic)
+#summary(model_bic)
+```
+
+# Exercise
+1. Use the forward selection method with "ames" data, select a model based on BIC, and compare the model fit using BIC, AIC to the one we obtained with the backward method.
+2. Use Cp and forward/backward selection methods to choose models with "ames" data and compare the model fit to the ones you obtained with BIC.

@@ -1,0 +1,330 @@
+---
+title: "R and Time series"
+output: html_notebook
+---
+
+R is a free, open-source programming language widely used for statistical analysis and data visualization. It is best used with an Integrated Development Environment (IDE) like RStudio.
+
+To get started with R, you must install the R programming language first, followed by the RStudio interface.
+https://posit.co/download/rstudio-desktop/
+
+
+## Core Concepts 
+
+**Objects and Assignment**: In R, you store values in objects using the assignment operator `<-`. 
+
+```{r}
+# Assign the value 10 to an object named 'x'
+x <- 10
+# Print the value of x
+print(x)
+
+y <- 100
+y
+```
+**Functions**: Functions are blocks of reusable code that perform specific tasks. To use a function, you pass arguments within parentheses. 
+
+```{r}
+# Use the sum() function to add numbers in a vector
+sum(c(1, 2, 3))
+```
+
+**Packages**: Packages are collections of functions and data that extend R's capabilities. You must install a package once and load it into your session with `library()` every time you use it.  
+
+```{r, eval=FALSE}
+# Install a package (only needs to be done once)
+# install.packages("ggplot2")
+# Load the package into the current session
+library(ggplot2)
+```
+
+## Data Types and Structures 
+
+R uses various data types and structures: 
+
+### Data Types: 
+
+**Numeric**: For numbers (e.g., 10 , 3.14 ). 
+
+**Character**: For text (e.g., "hello" ). 
+
+**Logical**: For `True` or `FALSE` values. 
+
+**Factor**: For categorical data. 
+
+### Data Structures: 
+
+**Vectors**: One-dimensional structures that store elements of the same data type. You create them using the `c()` function.
+	
+```{r}
+	# A numeric vector
+my_vector <- c(1, 2, 3, 4)
+```
+	
+**Matrices**: Two-dimensional arrays that store elements of the same data type. 
+
+**Lists**: One-dimensional structures that can store elements of different data types or even other data structures. 
+
+**Data Frames**: The most commonly used structure for data analysis; they are two-dimensional, like a spreadsheet, where each column can have a different data type but all columns must have the same length. You can create a data frame using the `data.frame()` function or import data from a file using functions like `read.csv()`.   
+
+### Basic Operations 
+
+• Arithmetic: Standard operators like `+`,`-`,`*` ,`/` ,`^`  (exponent) are available. 
+
+• Data Manipulation: Use functions like `subset()` to filter data,  `head()` to view the first few rows, and `summary()` to get statistical summaries. 
+
+• Getting Help: To get help on any function, type `?` followed by the function name in the console (e.g., `?subset` ).   
+
+
+
+## Import Time Series Data
+
+Data in the file "s&p_2026.csv" is the weekly S&P 500 index from Jan 24, 2025- Jan 21, 2026, obtained from https://www.marketwatch.com/investing/index/spx/download-data.
+
+Let's first import the dataset in R.
+
+#### Step 1: Set working directory where your data is saved.
+
+#### stpe 2: Import dataset with the following code. 
+```{r}
+snp<-read.csv("s&p_2026.csv" )
+```
+
+To check the type of data:
+
+```{r}
+class(snp)
+```
+To check how the data looks like:
+
+
+```{r}
+# to see the first few rows
+head(snp)
+```
+
+
+```{r}
+# to see the last few rows
+tail(snp)
+```
+
+
+To choose a specific column in the dataset 
+
+```{r}
+open_price<-snp$Open
+```
+
+```{r}
+class(open_price)
+head(open_price)
+```
+To visualize the open price of S\&p500 over the time of the dataset
+
+```{r}
+plot(open_price, type="l")
+```
+
+This is called time series plot.
+
+## Set as time series object and draw time series plot
+
+R package `fpp2`: provides various datasets (e.g., `a10` for drug sales, `ausbeer` for beer production, `goog` for stock prices) and tools useful in time series analysis. 
+
+```{r, eval=FALSE}
+library(fpp2)
+```
+
+Make a numeric vector into time series object using a R-function `ts()`
+
+```{r}
+SP_ts<- ts(open_price ,start=c(1,3), freq = 4)
+#or
+SP_ts2<-ts(open_price ,start=1, freq = 4)
+```
+
+
+`freq`=frequency, number of observations in each cycle/season
+
+`start`=	the time of the first observation; should be a vector of two numbers, or just one number. 
+
+To know more about the function, try
+```{r}
+?ts
+```
+
+
+```{r}
+class(SP_ts)
+```
+
+
+```{r}
+head(SP_ts)
+tail(SP_ts)
+```
+```{r}
+head(SP_ts2)
+```
+
+```{r}
+autoplot(SP_ts, ylab="Stock price")
+```
+
+```{r}
+autoplot(SP_ts2)
+```
+
+Or convert the whole dataframe into time series object:
+
+```{r}
+SP_ts3<- ts(snp ,start=1, freq = 4)
+class(SP_ts3)
+```
+```{r}
+head(SP_ts3)
+```
+
+
+```{r}
+SP_ts3[,1]
+SP_ts3<-SP_ts3[,-1]
+```
+```{r}
+head(SP_ts3)
+```
+```{r}
+autoplot(SP_ts3)
+```
+
+
+## Obtain stock prices in R
+
+To obtain stock prices in R, use the `quantmod` package for historical data with `getSymbols()`
+
+
+```{r, warning=FALSE}
+
+install.packages("quantmod")
+library(quantmod)
+
+# Get Apple stock data
+getSymbols("AAPL", from = "2023-01-01", to = "2024-01-01")
+
+# View the first few rows
+head(AAPL)
+
+# Plot the stock price
+chartSeries(AAPL)
+```
+
+
+```{r}
+getSymbols("AAPL", 
+           src = "yahoo", 
+           from = "2025-01-01", 
+           to = "2026-02-24", 
+           periodicity = "weekly")
+
+chartSeries(AAPL)
+```
+
+Periodicity Argument: Supports "daily", "weekly", and "monthly". It is efficient because it downloads a smaller volume of data from the web.
+
+```{r}
+# loads Ford as time series class ts 
+getSymbols('F',src='yahoo',from = "2025-01-01", 
+           to = "2026-02-24", 
+           periodicity = "daily",
+           return.class='ts') 
+chartSeries(F)
+autoplot(F)
+autoplot(F, facets = TRUE)
+```
+
+
+## Types of variations in time series data
+
+types of variations
+
+**Trend**: general changes observed in mean-level.
+
+**Cyclical or seasonal variation**: repeated patterns observed with cycles or seasons (e.g. cyclical patterns in monthly sales of electronics, monthly average temperature, monthly sales of heater, monthly electric bill.)
+
+**Other irregular fluctuations**: If it is purely random fluctuation, it is not of our interest—we cannot analyze it further. If it has a structure in the fluctuations—we will find the structure and model it with time series techniques.
+
+
+# Exercise
+1. Extract the monthly retail trade and food services data –not seasonally adjusted---from 1992 to 2026 from the website below.
+https://www.census.gov/econ/currentdata/
+Save the file in csv form (you need to clean up the dataset in Microsoft Excel) and read it in R studio. Draw time series plot with the data. Attach the plot. Describe types of fluctuations that are observed from the data.
+Is there any trend observed over time?
+Any seasonal variations?
+Irregular fluctuation?
+
+Hint:
+
+```{r}
+data_retail<-read.csv("retail.csv")
+
+head(data_retail)
+tail(data_retail)
+class(data_retail)
+```
+Our variable `Value` should be numeric, however...
+
+```{r}
+class(data_retail$Value)
+```
+
+How to change the character vector into numeric vector?
+
+method 1: change it to numbers in Microsoft Excel and import the data again.
+
+method 2: covert to numeric in R as follows
+
+```{r}
+# Your character vector
+my_vector <- c("10.5", "20", "30.7")
+class(my_vector)
+# Convert to numeric
+my_numeric_vector <- as.numeric(my_vector)
+class(my_numeric_vector)
+```
+If we try
+```{r}
+as.numeric(data_retail$Value)
+```
+
+
+It does not work, since the characters include `,`.
+
+
+Clean-up: If your vector has commas (e.g., "1,200"), use gsub() before converting:
+
+For example,
+```{r}
+as.numeric(gsub(",", "", "1,200"))
+```
+For our case:
+```{r}
+ourdata<-as.numeric(gsub(",", "", data_retail$Value))
+head(ourdata)
+```
+Now we are ready to make it into time series object:
+since it is monthly data which starts from January 1992,
+
+```{r}
+ts(ourdata, start=c(1992, 1), frequency = 12)
+```
+
+
+
+
+
+
+
+
+
+

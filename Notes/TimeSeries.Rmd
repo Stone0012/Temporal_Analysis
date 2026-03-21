@@ -1,0 +1,264 @@
+---
+title: "Time series (and data frames)"
+output: html_notebook
+---
+
+```{r}
+library(fpp2)
+```
+
+Time series are everywhere, any signal indexed by time is a time series. Examples:
+
+* Call volumes to a customer service center
+* stock price
+* housing price
+* temperature throughout a day
+* ...
+
+The goal of time series analysis is to forecast!
+
+
+# 1. Define a single variable time series
+`ts(data =, start =, frequency =)`
+```{r}
+observations <- c(100, 20, 30, 55, 45, 70, 90, 24, 52, 35, 60, 73, 18, 25)
+y_month <- ts(observations, start = c(2000, 2), frequency = 12)
+y_month
+```
+- frequency = 5 or 7: daily data
+- frequency = 4: quarterly data
+- frequency = 12: monthly data
+- frequency = 52: weekly data
+
+```{r}
+y_quart <- ts(observations, start = c(1990,3), frequency=4)
+y_quart
+```
+
+```{r}
+y_daily <- ts(observations, start=c(1,3) ,frequency=5)
+y_daily
+```
+```{r}
+
+y_year <- ts(observations, start = 2000)
+y_year
+```
+
+to know more about `ts`, use r-code `?ts` or `help(ts)`.
+
+
+# 2. Plot
+The `autoplot()` function in package `ggplot2` is a convenient way to generate various types of plots based on the type of data object passed to it.
+```{r}
+autoplot(y_month)
+autoplot(y_quart)
+autoplot(y_daily)
+autoplot(y_year)
+```
+
+
+## add x/y labels and title
+```{r}
+autoplot(y_year) +
+  labs(title = "A title",
+       x = "Year",
+       y = "Value")
+```
+
+
+## Explore other time series that come with fpp2 {#explore}
+
+type `help(fpp2)` in console and then click "Index" at the bottom.
+```{r}
+# plot a10
+autoplot(a10) +
+  labs(title = "Monthly anti-diabetic drug subsidy in Australia from 1991 to 2008")
+```
+
+# 3. Useful methods to explore time series
+- `start()`, `end()`, `frequency()`
+- `window()`: very useful in truncating a time series because it retains the time series attributes.
+
+explore this a10 time series object a bit more.
+
+```{r}
+end(a10)
+frequency(a10)
+```
+
+```{r}
+window(a10, start = c(2008, 5))
+```
+
+*Below is a bad way to truncate a time series, unless you only want the raw values.*
+```{r}
+n <- length(a10)
+a10[(n - 1) : n]
+```
+
+# 4. Useful methods to explore dataframes and time series
+- `head()`: view the first few rows (or entries)
+- `tail()`: similar but for the end
+
+```{r}
+head(a10, 3)
+```
+
+## for data frames
+```{r}
+df <- data.frame(name = c("A", "B", "C"),
+                 height = c(160, 170, 165))
+df
+```
+
+```{r}
+head(df, 2)
+```
+
+Retrieve entries in a data frame
+
+```{r}
+# first row, 2nd col
+df[1, 2]
+```
+
+```{r}
+df[2:3, 2]
+```
+
+```{r}
+df[c(1, 3), 'name']
+```
+```{r}
+df[2,]
+df[,2]
+```
+
+## elecdemand: a multi-variable time series
+`View(elecdemand)` will open a separate tab for us to view this data set.
+
+```{r}
+help(elecdemand)
+autoplot(elecdemand)
+```
+
+retrieve entries from elecdemand
+
+
+get a specific column: `df[, col_idx]`
+```{r, eval=FALSE}
+elecdemand[, 2]
+```
+
+get only first (Demand) and third (Temperature) column of `elecdemand`
+```{r eval=FALSE}
+ elecdemand[, c(1, 3)]
+ elecdemand[, c('Demand', 'Temperature')]
+```
+
+
+get first row
+```{r, eval=FALSE}
+ elecdemand[1, ]
+```
+
+### draw a scatter plot for a multi-variable time series
+`ggplot()` needs a data frame, but elecdemand is not a data frame object.
+```{r}
+class(elecdemand)
+```
+msts is an object for multi seasonal time series objects, intended to be used for models that support multiple seasonal periods
+
+```{r}
+
+head(elecdemand)
+```
+
+
+```{r}
+ed_df <- as.data.frame(elecdemand)
+class(ed_df)
+```
+
+scatter plot
+```{r}
+ggplot(data = ed_df,
+       mapping = aes(x = Temperature, y = Demand)) +
+  geom_point()
+```
+
+more exercise on plot: drawing only first three rows
+
+the later two functions inherit the data and aes in `ggplot()`.
+```{r}
+ggplot(data = ed_df[1:3,],
+       mapping = aes(x = Temperature, y = Demand)) +
+  geom_point() +
+  geom_line()
+```
+
+
+```{r}
+ggplot(data = ed_df[1:3,],
+       mapping = aes(x = Temperature, y = Demand)) +
+  geom_point(data = ed_df[4:6,]) +
+  geom_line()
+```
+
+# 5. Time series patterns
+* Trend: A trend exists when there is a long-term increase or decrease in the data. It does not have to be linear.
+
+  In the `a10` [plot](#explore), there is an upward trend.
+  
+
+* Seasonal: Seasonality is always of a **fixed** and known frequency.
+
+  In the `a10` plot, there is also a seasonal pattern.
+
+* cyclic: A cycle occurs when the data exhibit rises and falls that are **not of a fixed** frequency. It is like seasonal, but each cycle's length will vary.
+
+## Explore seasonality with seasonal plots
+- `ggseasonplot()` 
+
+
+```{r}
+ggseasonplot(a10)
+```
+
+Recall `window()` subsets a time series nicely.
+```{r}
+ggseasonplot(window(a10, end = c(1993, 12)))
+```
+
+
+
+## A cyclic example
+```{r}
+autoplot(lynx) 
+frequency(lynx)
+head(lynx)
+```
+
+The following code will find all the local max (peaks) of a time series.
+
+```{r}
+# You can explore this code on your own. It will not be tested.
+which(diff(sign(diff(lynx))) == -2) + 1
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

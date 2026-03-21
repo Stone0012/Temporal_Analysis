@@ -1,0 +1,341 @@
+---
+title: "Decomposition"
+output: html_notebook
+---
+
+
+```{r}
+library(fpp2)
+library("seasonal") # for seas()
+```
+
+# Decomposition Intro
+Additive decomposition: $y_t = S_t + T_t + R_t$
+
+* $S_t$: seasonal component
+* $T_t$: trend-cycle component
+* $R_t$: remainder component
+* $y_t - S_t = T_t + R_t$ = seasonally adjusted data (no seasonal component)
+
+There is also multiplicative decomposition: $y_t = S_t \times T_t \times R_t$.
+
+
+The primary goal of decomposition is to study and understand historical data better. Later we will learn other methods (smoothing and ARMIA models) that can be used for forecasting as well as understanding the historical data.  
+
+
+# 1. Moving averages
+
+A moving average of order m, denoted by *m-MA*, is obtained by averaging over m neighboring values.
+
+`ma(y, order = m, centre = )`
+
+* If m is odd, then the locations picked are symmetric. centre = T or F does not matter 
+* If m is even, 
+  + (1) if `centre = FALSE`, 1 more value is picked from the later time.
+  + (2) if `centre = TRUE`, we have to do a "2-MA" on the data obtained from 1.
+
+||1|2|3|4|5|6|
+|:----|:----|:----:|:----|:----|:----|:----|
+|y|11|12|13|12|15|11|
+|3-MA|NA|(11+12+13)/3|12.33|13.33|12.67|NA|
+|4-MA (not centered)|NA|(11+12+13+12)/4=12|13|12.75|NA|NA|
+|4-MA (centered)|NA|NA|12.5|12.875|NA|NA|
+
+
+In general, m-MA (not centered) will have (m-1) NA values.
+For example, if m=12, there will be 5 NAs at the beginning and 6 NAs at the end.  
+
+## Using R
+```{r}
+y <- c(11, 12, 13, 12, 15, 11)
+y.ma3 <- ma(y, 3)
+y.ma4.c <- ma(y, 4, centre = TRUE)
+y.ma4.nc <- ma(y, 4, centre = FALSE)
+```
+
+display the above table:
+
+```{r}
+rbind("y" = round(y, 2),
+      "3-MA" = round(y.ma3, 2),
+      "4-MA not centered" = round(y.ma4.nc, 2),
+      "4-MA centered" = round(y.ma4.c, 2))
+```
+
+
+**bigger order generates smoother curve**
+```{r}
+# plot
+autoplot(elecequip) +
+  autolayer(ma(elecequip, 5), series = "5-MA") +
+  autolayer(ma(elecequip, 12), series = "12-MA")
+```
+We can see that there are missing values of the moving average at the beginning and at the end of time period. The moving average method is useful when there is a trend but no seasonal variation.
+
+# 2. Classical decomposition
+The classical decomposition method is relatively simple. The trend-cycle component will be exactly the moving average of y with order = frequency(y), and it assumes that the seasonal component is constant from year to year. 
+
+## 2.1 Additive method
+
+Additive decomposition: $y_t = S_t + T_t + R_t$
+
+* $S_t$: seasonal component
+* $T_t$: trend-cycle component
+* $R_t$: remainder component
+* $y_t - S_t = T_t + R_t$ = seasonally adjusted data (no seasonal component)
+
+
+We will use `elecequip` as an example.
+```{r}
+autoplot(elecequip)
+```
+
+### 2.1.1 Perform the classical decomposition by hand
+#### step 1: Get the trend-cycle component
+`ma(y, order = freq)`
+```{r}
+m <- frequency(elecequip)
+ee.TC <- ma(elecequip, order = m)
+```
+
+we could have specified `centre = TRUE` in the above function. In reality, there are very little differences.
+
+
+#### step 2: Get the seasonal component S. 
+- First compute the detrended series: `y - trend_cycle`
+- The seasonal component will have the SAME value for the same season (say Jan). For each season, we simply use the average of the detrended values of that season. 
+- (not necessary but conventional) Finally we normalize the seasonal component so that all seasons (such as 12 months) values add up to 0.
+
+We will first get the detrended series.
+```{r}
+ee.DT <- elecequip - ee.TC
+```
+
+```{r}
+start(elecequip)
+```
+
+Use January as an example.
+```{r}
+# all the January indices
+jan_idx <- seq(1, length(elecequip), 12)
+mean(ee.DT[jan_idx], na.rm = TRUE)
+```
+
+
+`ee.S` is going to be a periodic time series such that every January value equals -5.846361.
+```{r}
+# initialize ee.S
+ee.S <- ts(rep(NA, length(elecequip)), 
+           start = start(elecequip),
+           frequency = frequency(elecequip))
+ee.S[jan_idx] <- mean(ee.DT[jan_idx], na.rm = TRUE)
+ee.S
+```
+
+For other months, we do a for loop
+```{r}
+for (month in 1:12){
+  m_idx <- seq(month, length(elecequip), 12)
+  ee.S[m_idx] <- mean(ee.DT[m_idx], na.rm = TRUE)
+  
+}
+head(ee.S, 36)
+```
+
+
+
+```{r}
+# plot seasonal component
+autoplot(ee.S)
+```
+
+need to normalize S
+```{r}
+ee.S.normalized <- ee.S - mean(ee.S[1:12])
+cbind(ee.S[1:6], ee.S.normalized[1:6])
+```
+
+#### step 3: Get the remainder
+```{r}
+ee.R <- elecequip - ee.TC - ee.S.normalized
+```
+
+
+#### plot all 4 together
+original, trend_cycle, seasonal, remainder
+
+The function `cbind()` makes a table with specified columns. We can then use `autoplot(table, facets = TRUE)`.
+```{r}
+all4 <- cbind("original" = elecequip,
+              "trend_cycle" = ee.TC,
+              "seasonal" = ee.S.normalized,
+              "remainder" = ee.R)
+autoplot(all4, facets = TRUE)
+```
+
+#### plot seasonally adjusted series
+```{r}
+ee.seasadj <- elecequip - ee.S.normalized
+autoplot(ee.seasadj)
+```
+
+
+
+
+### 2.1.2 R's built-in function for classical decomposition
+`decompose(y, type = "additive")`
+```{r}
+ee.cla <- decompose(elecequip, type = "additive")
+autoplot(ee.cla)
+```
+
+How to extract the three components of the classical decomposition?
+- `trendcycle()`
+- `seasonal()`
+- `remainder()`
+
+The function `seasadj()` is also readily available.
+```{r}
+head(seasonal(ee.cla))
+head(ee.S.normalized)
+```
+
+```{r}
+autoplot(elecequip, series="Data") +
+  autolayer(trendcycle(ee.cla), series="Trend") +
+  autolayer(trendcycle(ee.cla)+seasonal(ee.cla), series="Trend+Seasonal") +
+  autolayer(seasadj(ee.cla), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Electrical equipment manufacturing (Euro area)") +
+  scale_colour_manual(values=c("black","blue","red","green"),
+      breaks=c("Data","Seasonally Adjusted","Trend","Trend+Seasonal"))
+```
+
+```{r}
+autoplot(elecequip, series="Data") +
+  autolayer(trendcycle(ee.cla), series="Trend") +
+  autolayer(seasadj(ee.cla), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Electrical equipment manufacturing (Euro area)") +
+  scale_colour_manual(values=c("grey","blue","red"),
+      breaks=c("Data","Seasonally Adjusted","Trend","Trend+Seasonal"))
+```
+
+## 2.2 Multiplicative method
+
+If the seasonal variation increases or decreases with trend, then multiplicative method is better. 
+
+Additive decomposition: $y_t = S_t\times T_t \times R_t$
+
+* $S_t$: seasonal component
+* $T_t$: trend-cycle component
+* $R_t$: remainder component
+* $y_t/ S_t = T_t \times R_t$ = seasonally adjusted data (no seasonal component)
+
+`decompose(y, type = "mult")`
+```{r}
+ee.cla_m <- decompose(elecequip, type = "mult")
+autoplot(ee.cla_m)
+```
+
+```{r}
+autoplot(elecequip, series="Data") +
+  autolayer(trendcycle(ee.cla_m), series="Trend") +
+  autolayer(trendcycle(ee.cla_m)*seasonal(ee.cla_m), series="Trend*Seasonal") +
+  autolayer(seasadj(ee.cla_m), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Electrical equipment manufacturing (Euro area)") +
+  scale_colour_manual(values=c("black","blue","red","green"),
+      breaks=c("Data","Seasonally Adjusted","Trend","Trend*Seasonal"))
+```
+
+```{r}
+autoplot(elecequip, series="Data") +
+  autolayer(trendcycle(ee.cla_m), series="Trend") +
+  autolayer(seasadj(ee.cla_m), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Electrical equipment manufacturing (Euro area)") +
+  scale_colour_manual(values=c("grey","blue","red"),
+      breaks=c("Data","Seasonally Adjusted","Trend","Trend*Seasonal"))
+```
+
+## Some drawbacks on classical decomposition:
+* assume seasonal component repeats from year to year, but the seasonal component at a fixed season can vary slowly as years go by.
+* the trend-cycle component is NA for the first few values and the last few values. (if m=12, there is no trend-cycle estimate for the first six and the last six observations.)
+
+# 3. X11 decomp - only for quarterly or monthly data
+* Originated in the US Census Bureau.
+* Allow seasonal component to vary (slowly) over time
+* trend-cycle component is available for all observations
+* It handles both additive and multiplicative decomposition (automatically choose between the two)
+
+Once a package, say "seasonal" is installed, we can always access the functions there without loading it by using `::`
+`seasonal::seas(y, x11 = "")`
+```{r}
+ee.x11 <- seasonal::seas(elecequip, x11 = "", transform.function = "none")
+autoplot(ee.x11)
+```
+```{r}
+seasonal(ee.x11)
+```
+
+```{r}
+autoplot(elecequip, series="Data") +
+  autolayer(trendcycle(ee.x11), series="Trend") +
+  autolayer(seasadj(ee.x11), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Electrical equipment manufacturing (Euro area)") +
+  scale_colour_manual(values=c("grey","blue","red"),
+      breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+
+# 4. STL decomposition - any type of seasonality (daily, weekly, monthly, quarterly, yearly, etc.)
+* developed by R. B. Cleveland et al. in 1990
+* allow seasonal component to vary over time, and the rate of change can be controlled by the user.
+* trend-cycle component is available for all observations. The smoothness of the trend-cycle can also be controlled by the user.
+* more user control
+* it works with any kind of frequency (better than x11), but does not handle multiplicative decomposition.
+* quite popular
+
+`stl(y, s.window =, t.window = )` (stats package)
+```{r}
+ee.stl <- stl(elecequip, s.window = 7, t.window = 13)
+autoplot(ee.stl)
+```
+
+
+```{r}
+autoplot(elecequip, series="Data") +
+  autolayer(trendcycle(ee.x11), series="Trend") +
+  autolayer(seasadj(ee.x11), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Electrical equipment manufacturing (Euro area)") +
+  scale_colour_manual(values=c("grey","blue","red"),
+      breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+
+### Remarks on s.window and t.window
+* both should be odd number
+* t.window is the number of consecutive observations to be used when estimating the trend-cycle, so bigger t.window means smoother trend-cycle. (t.window is like moving average order)
+* s.window is the number of consecutive years to be used in estimating each value in the seasonal component. Bigger s.window means smaller change in the seasonal component. 
+
+# 5. Seasonal strength
+$$F_s = \max(0, 1-\frac{var(R_t)}{var(S_t + R_t)})$$
+$F_s$ close to 0 means very weak seasonality.
+```{r}
+# Fs < 0.64: weak seasonality
+(1 - var(remainder(ee.stl))/var(seasonal(ee.stl) + remainder(ee.stl))) %>% max(0, .)
+```
+
+## Exercise
+
+1. Use built-in AirPassengers dataset in R. 
+```{r}
+data(AirPassengers)
+```
+(a) Apply additive and multiplicative classical decomposition methods. For each method, draw a plot where data, seasonal adjusted estimate, trend and trend+seasonal (trend*seasonal for multiplicative method) are overlaid. Which method produces better results, and why?
+
+(b) Apply other decomposition methods, X11 method and STL decomposition methods. For each method, draw a plot where data, seasonal adjusted estimate, trend are overlaid. Compare the results of the two methods and also the classical methods from (a).
+
+(c) Compute seasonal strength $F_s$ from each method you applied in (a-b).

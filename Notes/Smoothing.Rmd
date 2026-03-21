@@ -1,0 +1,413 @@
+---
+title: "Exponential Smoothing"
+output: html_notebook
+---
+
+
+
+# Main idea
+
+Notations:  $\hat y_{t+h|t}$ denotes the forecast for time $t+h$ using data until time $t$.   $\hat y_{t+1|t}$ is the one-step-ahead forecast for time $t+1$, it is also denoted as $\hat y_{t}$.  
+
+* Naive method: $\hat y_{T+h|T} = 1*y_T+0*y_{T-1}+\cdots+0*y_1$ (uses only the latest observation)
+* Average method: $\hat y_{T+h|T} = \frac{1}{T}*y_T+\frac{1}{T}*y_{T-1}+\cdots+\frac{1}{T}*y_1$ (uses the average of all observation)
+
+Note that both methods result in constant forecast values for any future time $T+h, h>0,$ for fixed time $T$.
+It is reasonable to have a general model that the future forecast is a linear combination of known values (with total weights = 1). Exponential smoothing can be viewed as such a model.
+
+# 1. Simple exponential smoothing (SES)
+suitable for time series that has no trend nor seasonality.
+
+Model for SES is
+$$\hat y_{t+1|t}=\alpha y_t+(1-\alpha)\hat y_{t|t-1} \text{ or } \\\hat y_{t+1}=\alpha y_t+(1-\alpha)\hat y_{t},$$
+where $\hat y_t$ is the fitted value at time $t$ (also called one-step ahead forecast for time $t$).
+
+## How does this iterative formula work?
+* Let $l=\hat y_1$ be the first fitted value.
+* $t=1$: $\hat y_2 = \alpha y_1 + (1-\alpha)\hat y_1= \alpha y_1 + (1-\alpha)l$
+* $t=2$: $\hat y_3  = \alpha y_2 + (1-\alpha)\hat y_2=\alpha y_2 + (1-\alpha)(\alpha y_1 + (1-\alpha)l)=\alpha y_2+\alpha(1-\alpha) y_1+(1-\alpha)^2l$
+* $t=3$: $\hat y_4=\alpha y_3+(1-\alpha)\hat y_3 = \alpha y_3+(1-\alpha)[\alpha y_2+\alpha(1-\alpha) y_1+(1-\alpha)^2l]=\alpha y_3+\alpha(1-\alpha)y_2+\alpha(1-\alpha)^2y_1+(1-\alpha)^3l$
+* ...
+* For general $t$, we have
+$$\hat y_t=\alpha y_{t-1}+\alpha(1-\alpha)y_{t-2}+\alpha(1-\alpha)^2y_{t-3}+\cdots+\alpha(1-\alpha)^{t-2}y_1+(1-\alpha)^{t-1}l$$
+So the one step ahead forecast is a linear combination of the previous values, with **weights decaying exponentially**.
+
+#### Try $\alpha = 0.6$
+$$\hat y_4=0.6 y_3+0.6*0.4y_2+0.6*0.4^2y_1+0.4^3l$$
+
+#### Try $\alpha = 0.2$
+$$\hat y_4=0.2 y_3+0.2*0.8y_2+0.2*0.8^2y_1+0.8^3l$$
+
+Bigger $\alpha$ $\to$ smaller $1-\alpha$ $\to$ faster decay
+
+### Finding $\alpha$ and $l$.
+Since all fitted values are functions of $\alpha$ and $l$, then SSE (sum of squared error) = $\sum_{t=1}^T(y_t-\hat y_t)^2$ is also a function of $\alpha$ and $l$ only.
+
+A common strategy in many models is to find $\alpha, l$ such that SSE gets minimized. This optimization problem will be solved by R.
+
+## How to forecast
+forecasting formula for SES is
+$$\hat y_{T+h| T} = \hat y_{T+1| T}=\alpha y_T+ (1-\alpha) \hat y_{T|T-1}, \text{ for any }h.$$
+This is called a flat forecast because it does not depend on h. (constant forecast values for any future time $t+h$ after a fixed time $t$)
+
+## Example on elecequip
+```{r}
+autoplot(elecequip)
+```
+
+decomposition, and then get seasonally adjusted portion, and seasonal portion.
+```{r}
+ee.stl <- stl(elecequip, t.window = 13, s.window = 'periodic')
+ee.stl.seasa <- seasadj(ee.stl)
+ee.stl.seasonal <- seasonal(ee.stl)
+autoplot(ee.stl)
+```
+
+### We will apply SES on the seasonal adjusted data
+
+`ses(y, h)`
+`y`: data in ts format
+`h`: the number of future forecasts
+
+```{r}
+ee.stl.seasa.ses <- ses(ee.stl.seasa, h = 10)
+autoplot(ee.stl.seasa) +
+  autolayer(ee.stl.seasa.ses)
+```
+
+
+
+
+### we can extract the parameters from the model
+`ee.stl.seasa.ses$model$par`
+```{r}
+ee.stl.seasa.ses$model$par
+```
+
+Extract the fitted values
+```{r}
+# to see the first several fitted values:
+head(fitted(ee.stl.seasa.ses))
+```
+
+We can see that `l` is the first fitted value.
+
+Check the forecast:
+
+```{r}
+forecast(ee.stl.seasa.ses)
+
+# or 
+# ee.stl.seasa.ses$mean 
+```
+
+
+
+# 2. Holt's linear trend method 
+suitable for data that has trend, but no seasonality.
+
+Another way to model SES is
+$$\begin{array}{rl}
+\hat y_{t} &= l_{t-1}\\
+l_t&=\alpha y_t+(1-\alpha)\hat y_{t}\end{array}$$
+
+Holt's linear trend method can be considered an upgrade. Fix $l_0,b_0,\alpha,\beta^*$,
+$$\begin{array}{rl}
+\hat y_{t} &= l_{t-1} + b_{t-1}\\
+l_t&=\alpha y_t+(1-\alpha)\hat y_{t}\\
+b_t&=\beta^*(l_t-l_{t-1})+(1-\beta^*)b_{t-1}\end{array}$$
+
+forecasting formula for Holt's linear method is
+$$\hat y_{T+h|T} = l_T+b_T\cdot h$$
+
+`holt(y, h)`
+```{r}
+ee.stl.seasa.holt <- holt(ee.stl.seasa, h = 10)
+autoplot( ee.stl.seasa.holt  )
+```
+
+plot ses and holt together
+
+```{r}
+p <- autoplot(ee.stl.seasa) +
+  autolayer(ee.stl.seasa.ses, PI = FALSE, series = "SES") +
+  autolayer(ee.stl.seasa.holt, PI = FALSE, series = "Holt")
+p
+```
+
+In this model, states (`ee.stl.seasa.holt$model$states`) are the $l_t$'s in the modeling equation, which are different from the fitted values.
+
+```{r}
+ee.stl.seasa.holt$model$par
+```
+```{r}
+forecast(ee.stl.seasa.holt)
+```
+To extract the forecast only:
+```{r}
+ee.stl.seasa.holt$mean
+```
+To extract the fitted values:
+
+```{r eval=FALSE}
+fitted(ee.stl.seasa.holt)
+```
+
+`holt( , dampled=TRUE)`: Trend Leveling- Instead of a straight line continuing at a fixed slope, the forecast trajectory "dampens" or flattens out over time, eventually becoming a flat line.
+
+```{r}
+ee.stl.seasa.holt.d <- holt(ee.stl.seasa, damped = TRUE, h=10)
+# plot ses, holt, holt.d
+p + autolayer(ee.stl.seasa.holt.d, PI = FALSE, series = "Holt-damped")
+```
+
+# 3. Holt-Winters Method (allows trend and seasonality)
+We will skip the modeling formula (can be found in 7.3 of textbook) as it is more or less adding one more equation to the trend method.
+
+`hw(y, h)`
+
+train test split
+```{r}
+S <- 10
+T <- length(elecequip) - S
+ee.tr <- head(elecequip, T)
+ee.ts <- tail(elecequip, S)
+```
+
+use holt-winters method: 
+```{r}
+ee.tr.hw <- hw(ee.tr, h = S)
+autoplot(ee.tr)+
+  autolayer(ee.tr.hw, series = "Holt-Winters", PI = F)+
+  autolayer(ee.ts, series = "testing")
+```
+
+
+```{r}
+ee.tr.hw$model$par
+```
+```{r}
+forecast( ee.tr.hw)
+```
+
+
+```{r, eval=FALSE}
+#To extract the forecast only:
+ee.tr.hw$mean
+
+
+#To extract the fitted values:
+fitted( ee.tr.hw)
+```
+
+
+## try decomposition first {#decomp}
+visually compare Holt-Winters and holt_on_seasonally_adjusted_data.
+```{r}
+# decomposition on training
+ee.tr.stl <- stl(ee.tr, t.window = 13, s.window = 'periodic')
+ee.tr.seasa <- seasadj(ee.tr.stl)
+ee.tr.seasonal <- seasonal(ee.tr.stl)
+```
+
+`snaive(y , h)`: naive method for seasonal data--it sets each forecast to be equal to the last observed value from the same season 
+
+```{r}
+# holt's method on seasonally adjusted data
+ee.tr.seasa.holt <- holt(ee.tr.seasa, h = S)
+# snaive method on seasonal data
+ee.tr.seasonal.sn <- snaive(ee.tr.seasonal, h = S)
+#combine holt's method +snaive estimate
+ee.tr.de <- ee.tr.seasa.holt$mean + ee.tr.seasonal.sn$mean
+#compare "holt-winters method" VS "holt's method +snaive"
+autoplot(ee.tr) +
+  autolayer(ee.tr.de,
+            series = "Decomposition + Holt") +
+  autolayer(ee.tr.hw, PI = F, series = "HW") +
+  autolayer(ee.ts, series = "Testing")
+```
+
+
+
+## Accuracy?
+
+Check the forecasting error $e_{T+h}=y_{T+h}-\hat y_{T+h|T}$,
+and compute
+
+* Mean Absolute Error (MAE) = mean of ($|e_{T+1}|, |e_{T+2}|, \cdot, |e_{T+S}|$)
+
+* **Root Mean Squared Error** (RMSE) = sqrt(mean(e_t^2)) = $\sqrt{\frac{1}{S}\sum_{t=T+1}^{T+S}e_t^2}$
+
+* Mean Absolute Percentage Error (MAPE) = mean ($|\frac{e_t}{y_t}|$)
+
+* **Mean Absolute Scaled Error** (MASE) = mean($\frac{|e_t|}{\frac{1}{T-1}\sum_{t=2}^T|y_t-y_{t-1}|}$)
+
+`accuracy(model, testing_data)` or `accuracy(point_forecast, testing_data)`
+
+```{r}
+accuracy(ee.tr.hw, ee.ts)
+```
+
+```{r}
+accuracy(ee.tr.seasa.holt$mean + ee.tr.seasonal.sn$mean, ee.ts)
+```
+
+Holt-winters method is doing a little bit better than the decomposition+Holt method.
+
+# Multiplicative seasonality
+* Additive seasonality: data = level (trend-cycle) + seasonal component
+* Multiplicative seasonality: data = level (trend-cycle) * seasonal component. Seasonality changes in proportion to the level of data.
+```{r}
+ee.tr.hwm <- hw(ee.tr, h = S, seasonal = "multiplicative")
+autoplot(ee.tr) +
+  autolayer(ee.tr.hwm,
+            series = "HW-multiplicative", PI = F) +
+  autolayer(ee.tr.hw, PI = F, series = "HW") +
+  autolayer(ee.ts, series = "Testing")
+```
+
+# Additive error VS multiplicative error
+
+Additive error:
+$$ y_t=\hat y_{t}+  \epsilon_t$$
+Multiplicative error:
+
+$$y_{t} = \hat y_{t} (1+\epsilon_t)$$
+also can be written as 
+$$\epsilon_{t} =\frac{y_t- \hat y_t}{\hat y_t} $$
+
+**A multiplicative error is the amount of error relative to the fitted value.**
+
+# 4. Exponential Smoothing models 
+
+All models we introduced in this notebook (plus the option of having additive or multiplicative errors) belong to the family of exponential smoothing models.
+
+* E for Error (residuals): A (additive) or M (multiplicative)
+* T for trend: N (no trend), A (linear trend), or Ad (damped trend)
+* S for season: N (no season), A (additive season), or M (multiplicative season)
+
+Theoretically we have $2\times 3\times3$ models, but not all of them are used. For example, if error is additive, then multiplicative seasonality is [not considered](https://otexts.com/fpp2/estimation-and-model-selection.html).
+Additive error models:
+
+$$
+\begin{array}{|l|c|c|c|}
+\hline
+ Trend/Seasonal & N &A&M \\
+\hline
+N & y_t=l_{t-1}+\epsilon_t & y_t=l_{t-1}+s_{t-m}+\epsilon_t  & y_t=l_{t-1}\times s_{t-m}+\epsilon_t   \\
+A & y_t=l_{t-1}+b_{t-1}+\epsilon_t & y_t=l_{t-1}+b_{t-1}+s_{t-m}+\epsilon_t &  y_t=(l_{t-1}+b_{t-1})\times s_t+\epsilon_t  \\
+Ad &  y_t=l_{t-1}+\phi b_{t-1}+\epsilon_t & y_t=l_{t-1}+\phi b_{t-1}+s_{t-m}+\epsilon_t &  y_t=(l_{t-1}+\phi b_{t-1})\times s_t+\epsilon_t
+\\ \hline
+\end{array}
+$$
+
+Multiplicative error models:
+$$
+\begin{array}{|l|c|c|c|}
+\hline
+Trend/Seasonal  & N &A&M \\
+\hline
+N & y_t=l_{t-1}(1+\epsilon_t) & y_t=(l_{t-1}+s_{t-m})(1+\epsilon_t)  & y_t=l_{t-1} s_{t-m} (1+\epsilon_t)   \\
+A & y_t=(l_{t-1}+b_{t-1})(1+\epsilon_t) & y_t=(l_{t-1}+b_{t-1}+s_{t-m})(1+\epsilon_t) &  y_t=(l_{t-1}+b_{t-1}) s_t(1+\epsilon_t)  \\
+Ad &  y_t=(l_{t-1}+\phi b_{t-1})(1+\epsilon_t) & y_t=(l_{t-1}+\phi b_{t-1}+s_{t-m})(1+\epsilon_t) &  y_t=(l_{t-1}+\phi b_{t-1}) s_t(1+\epsilon_t)
+\\ \hline
+\end{array}
+$$
+
+For instance, 
+
+- "ETS(A,N,N)" means no trend, no seasonality, and additive error, which is exactly SES with additive error.
+- "ETS(A, A, N)" means Holt's linear trend method.
+- "ETS(A, A, A)" means Holt-Winter additive method.
+- "ETS(M, A, M)" means Holt-Winter multiplicative method.
+
+
+
+R function: `ets(y, model = "ZZZ", damped =)`
+
+```{r}
+ee.tr.ann <- ets(ee.tr, model = "ANN")
+ee.tr.madm <- ets(ee.tr, model = "MAM", damped = TRUE)
+class(ee.tr.ann)
+```
+
+
+#### !!! Unlike the other forecasting functions we have seen, `ets()` DOES NOT return a forecast object.
+It has to be combined with the forecast function. For example, `forecast(ets(y, model = "ANN"), h = 5)` is the same as `ses(y, h = 5)`.
+```{r}
+ee.tr.ses1 <- forecast(ee.tr.ann, h = S)
+ee.tr.ses2 <- ses(ee.tr, h = S)
+cbind(ee.tr.ses1$mean, ee.tr.ses2$mean)
+```
+
+For an `ets` object, useful functions include
+
+- `coef(ee.tr.ets)`
+- `summary(ee.tr.ets)`
+```{r}
+coef(ee.tr.ann)
+coef(ee.tr.madm)
+```
+
+```{r}
+summary(ee.tr.madm)
+```
+
+
+```{r}
+# ETS(M, A, M)
+ee.tr.fit1 <- ets(ee.tr, model = "MAM", damped = FALSE)
+# ETS(M, Ad, M)
+ee.tr.fit2 <- ee.tr.madm
+coef(ee.tr.fit1)
+coef(ee.tr.fit2)
+```
+
+
+
+select models using BIC
+```{r}
+BIC(ee.tr.fit1, ee.tr.fit2)
+```
+
+`$aicc`
+```{r}
+ee.tr.fit1$aicc
+ee.tr.fit2$aicc
+```
+
+fit2 is better model.
+
+## ets() function will select models for us.
+```{r}
+ee.tr.bestETS <- ets(ee.tr)
+summary(ee.tr.bestETS)
+```
+
+
+We can also add some restrictions in the model by specify some of the 3 Z's.
+```{r}
+ee.tr.fit3 <- ets(ee.tr, model = "AZZ", damped = FALSE)
+summary(ee.tr.fit3)
+```
+
+We need to make sure the time series have positive values (ideally the values should stay away from 0) if we are using multiplicative error or seasonality.
+
+Again, this fit3 is just an ets object, we should use the forecast function if we want to forecast
+```{r}
+forecast(ee.tr.fit3, h = S)
+```
+
+## Exercise
+
+2. Use built-in AirPassengers dataset in R. 
+```{r}
+data(AirPassengers)
+```
+Use the last 12 observations in the data as a testing set, and the rest of them as a training set. Apply SES, Holt's linear trend, Holt-Winter Additive and Holt-Winter multiplicative methods to the training data, and obtain the forecast for the next 12 observations. 
+
+(a) Draw a plot where training data, testing data, forecast from the four methods are overlaid. Visually examine the plot, and describe the results. Which method produces the best forecasting results? Why do you think that method was most effective?
+
+(b) Compare the four methods by accuracy measures (MAE, RMSE, MAPE, MASE) using forecasting error. Which method produces the best forecasting results according to which accuracy measure?
+
+(c) Apply `ets()` function to the training dataset (do not specify the model so that R can choose it), obtain the forecast for the next 12 observations, and accuracy measures of the method. Draw a plot where training data, testing data, and forecasts from the five methods in (a,c) are overlaid. Also, compare the results from accuracy measures. Which method produces the best results? Why do you think that method was the most effective?
