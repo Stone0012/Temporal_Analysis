@@ -1,0 +1,283 @@
+---
+title: "Week 1 Homework"
+author: "Brandon Stonesifer"
+output:
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=F, message=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir="~/Desktop/School Files/Spring 26 Classes/Spatial_Tempral_Analysis/R")
+
+```
+
+
+```{r packages, include=F, message=F}
+library("ggplot2")
+library("quantmod")
+library("fpp2")
+library("leaps")
+library("stringr")
+```
+# Exercise 1 - Time Series:
+
+1. Extract the monthly retail trade and food services data –not seasonally adjusted---from 1992 to 2026 from the website below.
+Save the file in csv form (you need to clean up the dataset in Microsoft Excel) and read it in R studio. Draw time series plot with the data. Attach the plot. Describe types of fluctuations that are observed from the data.
+Is there any trend observed over time?
+Any seasonal variations?
+Irregular fluctuation?
+
+## Read and Inspect the Data
+
+```{r}
+data_retail<-read.csv("retail.csv")
+
+#head(data_retail)
+#tail(data_retail)
+#class(data_retail)
+```
+
+## Observe Value variable is character type
+
+```{r}
+class(data_retail$Value)
+```
+
+## Convert Value to Numeric
+
+```{r}
+ourdata<-as.numeric(gsub(",", "", data_retail$Value))
+head(ourdata)
+```
+
+## Create Time Series Type 
+
+```{r}
+ourdata2 <- ts(ourdata, start=c(1992, 1), frequency = 12)
+head(ourdata2)
+```
+
+## Plot
+
+```{r}
+autoplot(ourdata2)
+```
+
+## Exercise 1 Response:
+
+#### 1. There is a general and consisent upward trend from 1992 - 2026
+#### 2. There is a slight dip in 2010 and 2020, likely due to the housing marking crash and COVID-19 respectively, but the upward trend resumes after that.
+
+# Exercise 2 - Regression:
+
+1. Use the forward selection method with “ames” data, select a model based on BIC, and compare the model fit using BIC, AIC to the one we obtained with the backward method.
+
+2. Use Cp and forward/backward selection methods to choose models with “ames” data and compare the model fit to the ones you obtained with BIC.
+
+## Read in the Data
+
+```{r}
+ames <- modeldata::ames
+```
+
+## BIC Backward 
+
+```{r, warning=FALSE, results='hide'}
+regfit <- regsubsets(Sale_Price ~ ., data = ames, method = "backward", nvmax = 150)
+```
+
+```{r}
+regfit.s <- summary(regfit)
+dim(regfit.s$outmat)
+```
+
+
+```{r}
+bic_best <- which.min(regfit.s$bic)
+bic_best
+
+```
+
+
+```{r, results='hide'}
+fullmodel<-model.matrix(Sale_Price ~ ., data = ames)
+P<-as.data.frame(fullmodel)
+D<-cbind(Sale_Price=ames$Sale_Price,P[,-1])
+colnames(D) <- gsub("&","and",colnames(D))
+# choose the 82 predictors
+fs <- names(which(regfit.s$outmat[bic_best, ] == "*"))
+fs <- gsub("&","and",fs)
+selected_fs <- paste(fs, collapse = "+")
+paste("Sale_Price ~", selected_fs)
+```
+
+```{r}
+formula_regsubset <- as.formula(paste("Sale_Price ~", selected_fs))
+```
+
+
+```{r}
+model_bic <- lm(formula_regsubset, data = D)
+#check the results
+BIC(model_bic)
+AIC(model_bic)
+```
+
+## BIC Forward 
+
+```{r, warning=FALSE, results='hide'}
+regfit2 <- regsubsets(Sale_Price ~ ., data = ames, method = "forward", nvmax = 150)
+```
+
+```{r}
+regfit.s2 <- summary(regfit2)
+dim(regfit.s2$outmat)
+```
+
+
+```{r}
+bic_best2 <- which.min(regfit.s2$bic)
+bic_best2
+```
+
+
+```{r, results='hide'}
+fullmodel2<-model.matrix(Sale_Price ~ ., data = ames)
+P2<-as.data.frame(fullmodel2)
+D2<-cbind(Sale_Price=ames$Sale_Price,P2[,-1])
+colnames(D2) <- gsub("&","and",colnames(D2))
+# choose the 85 predictors
+fs2 <- names(which(regfit.s2$outmat[bic_best2, ] == "*"))
+fs2 <- gsub("&","and",fs2)
+selected_fs2 <- paste(fs2, collapse = "+")
+paste("Sale_Price ~", selected_fs2)
+```
+
+
+```{r}
+formula_regsubset2 <- as.formula(paste("Sale_Price ~", selected_fs2))
+```
+
+
+```{r}
+model_bic2 <- lm(formula_regsubset2,data=D2)
+#check the results
+BIC(model_bic2)
+AIC(model_bic2)
+```
+
+## CMP Backward
+
+```{r, warning=FALSE, results='hide'}
+regfit3 <- regsubsets(Sale_Price ~ ., data = ames, method = "backward", nvmax = 150)
+```
+
+```{r}
+regfit.s3 <- summary(regfit3)
+dim(regfit.s3$outmat)
+```
+
+
+```{r}
+bic_best3 <- which.min(regfit.s3$cp)
+bic_best3
+```
+
+```{r, results='hide'}
+fullmodel3<-model.matrix(Sale_Price ~ ., data = ames)
+P3<-as.data.frame(fullmodel3)
+D3<-cbind(Sale_Price=ames$Sale_Price,P3[,-1])
+colnames(D3) <- gsub("&","and",colnames(D3))
+# choose the 135 predictors
+fs3 <- names(which(regfit.s3$outmat[bic_best3, ] == "*"))
+fs3 <- gsub("&","and",fs3)
+selected_fs3 <- paste(fs3, collapse = "+")
+paste("Sale_Price ~", selected_fs3)
+```
+
+```{r}
+formula_regsubset3 <- as.formula(paste("Sale_Price ~", selected_fs3))
+```
+
+
+```{r}
+model_cp3 <- lm(formula_regsubset3,data=D3)
+#check the results
+BIC(model_cp3)
+AIC(model_cp3)
+```
+
+
+## CMP Forward 
+
+```{r, warning=FALSE, results='hide'}
+regfit4 <- regsubsets(Sale_Price ~ ., data = ames, method = "forward", nvmax = 150)
+```
+
+```{r}
+regfit.s4 <- summary(regfit4)
+dim(regfit.s4$outmat)
+```
+
+
+```{r}
+bic_best4 <- which.min(regfit.s4$cp)
+bic_best4
+```
+
+
+```{r, results='hide'}
+fullmodel4 <-model.matrix(Sale_Price ~ ., data = ames)
+P4<-as.data.frame(fullmodel4)
+D4<-cbind(Sale_Price=ames$Sale_Price,P4[,-1])
+colnames(D4) <- gsub("&","and",colnames(D4))
+# choose the 135 predictors
+fs4 <- names(which(regfit.s4$outmat[bic_best4, ] == "*"))
+fs4 <- gsub("&","and",fs4)
+selected_fs4 <- paste(fs4, collapse = "+")
+paste("Sale_Price ~", selected_fs4)
+```
+
+
+```{r}
+formula_regsubset4 <- as.formula(paste("Sale_Price ~", selected_fs4))
+```
+
+
+```{r}
+model_cp4 <- lm(formula_regsubset4,data=D4)
+#check the results
+BIC(model_cp4)
+AIC(model_cp4)
+```
+
+
+```{r, results='hide'}
+print("BIC Backward")
+BIC(model_bic)
+AIC(model_bic)
+
+print("BIC Forward")
+BIC(model_bic2)
+AIC(model_bic2)
+
+print("CMP Backward")
+BIC(model_cp3)
+AIC(model_cp3)
+
+print("CMP Forward")
+BIC(model_cp4)
+AIC(model_cp4)
+```
+
+## Exercise 2 Response:
+
+#### 1. For the BIC Backwards model (model select 82 variables), the BIC was 68005.86 and AIC was 67503.31 whereas for the BIC Forward model (model selected 85 variables), the BIC was 68015.1 and the AIC was 67494.6. BIC selected the Backwards model and AIC selected the forward model. I would go with the Backwards model here since BIC penalized more strictly for the inclusion of more variables to prevent over fitting. 
+
+#### 2. For the CMP Backward model (model selected 135 variables), the BIC was 68224.03 and the AIC was 67404.39 whereas the CMP Forward model (model selected 135 variables), the BIC was 68221.74 and the AIC was 67402.1. Each model included 135 variables, and both BIC and AIC agree that the forward model was the stronger model. 
+
+
+
+
+
