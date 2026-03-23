@@ -8,18 +8,17 @@ output:
 
 ```{r setup, include=F, message=F}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir="~/Desktop/School Files/Spring 26 Classes/Spatial_Tempral_Analysis/R")
-
+knitr::opts_knit$set(root.dir = getwd())
 ```
 
 
 ```{r packages, include=F, message=F}
 library("ggplot2")
 library("quantmod")
-library("fpp2")
 library("leaps")
 library("stringr")
 library("seasonal") 
+library("fpp2")
 ```
 
 
@@ -38,43 +37,29 @@ data(euretail)
 
 ```{r}
 TSRE_A <- tslm(Consumption ~ Income + Savings + Unemployment + trend + season, data = uschange)
-```
-
-
-```{r}
 checkresiduals(TSRE_A)
 qqnorm(rstudent(TSRE_A))
+summary(TSRE_A)
+c(AIC = AIC(TSRE_A), BIC = BIC(TSRE_A))
 ```
 
 ## B
 
 ```{r}
 TSRE_B <- tslm(euretail ~ trend + season)
-```
-
-
-```{r}
 fit <- tslm(euretail ~ trend + I(pmax(trend - 48, 0))+ season)
-```
-
-
-```{r}
 TSRE_B2 <- forecast(fit, h = 10)
-```
-
-
-```{r}
 autoplot(euretail)+
   autolayer(fitted(fit), series = "Fitted value")+ 
   autolayer(TSRE_B2$mean, series = "Forecast")
-  
 ```
 
 
 ## Time Series Regression Responses 
 
- - (a) 
- - (b)
+ - (a) The model fits reasonably well, with intuitive and strongly significant effects for Income, Savings, and Unemployment. However, residual diagnostics show remaining autocorrelation, meaning the model’s standard errors and significance levels may be overly optimistic. Overall fit metrics (AIC/BIC) are acceptable, but the autocorrelation suggests the model could be improved by addressing time‑series dependence.
+ 
+ - (b) Forecasted a continue decrease consistent with the current trend. 
 
 # Decomposition Exercises 
 
@@ -123,10 +108,6 @@ autoplot(AirPassengers, series="Data") +
 ```{r}
 DE_x11 <- seasonal::seas(AirPassengers, x11 = "", transform.function = "none")
 DE_STL <- stl(AirPassengers, s.window = 7, t.window = 13)
-```
-
-
-```{r}
 autoplot(AirPassengers, series="Data") +
   autolayer(trendcycle(DE_x11), series="Trend") +
   autolayer(seasadj(DE_x11), series="Seasonally Adjusted") +
@@ -173,7 +154,9 @@ Strengths
 
 ## Decomposition Responses
 
- - 
+ - (a) Multiplicative produces better results than additive because multiplicative allows the model to capture seasonality that scales rather than stays constant.
+ 
+ - (b) Both X11 and STL perform better because X‑11 and STL can flexibly estimate seasonality and trends that change over time, they adapt better to real‑world data than a fixed multiplicative structure, which assumes seasonality scales strictly with the level and can’t adjust when patterns shift. 
  
 # Smoothing Exercises
  
@@ -192,12 +175,60 @@ data(AirPassengers)
 ## A
 
 ```{r}
+AP <- AirPassengers
+frequency(AP)                           
+start(AP); end(AP)
+```
 
+
+```{r}
+train <- window(AP, end = c(1959, 12))
+test  <- window(AP, start = c(1960, 1))
+h <- length(test)
+```
+
+```{r}
+# SES
+fit_ses  <- ses(train, h = h)
+
+# Holt's linear trend (no seasonality)
+fit_holt <- holt(train, h = h)
+
+#  Holt-Winters Additive
+fit_hwa  <- hw(train, seasonal = "additive", h = h)
+
+#  Holt-Winters Multiplicative
+fit_hwm  <- hw(train, seasonal = "multiplicative", h = h)
+
+# Plot overlay: train, test, and the 4 forecasts
+autoplot(train) +
+  autolayer(test, series = "Test (1960)", linetype = "dashed") +
+  autolayer(fit_ses,  PI = FALSE, series = "SES") +
+  autolayer(fit_holt, PI = FALSE, series = "Holt") +
+  autolayer(fit_hwa,  PI = FALSE, series = "HW Additive") +
+  autolayer(fit_hwm,  PI = FALSE, series = "HW Multiplicative") +
+  labs(title = "AirPassengers: Train, Test, and 4 Smoothing Forecasts",
+       x = "Year", y = "Passengers (thousands)") +
+  guides(colour = guide_legend(title = "Series")) +
+  theme_minimal(base_size = 12)
 ```
 
 ## B
 
 ```{r}
+models_b <- list(
+  SES                 = fit_ses,
+  Holt                = fit_holt,
+  `HW Additive`       = fit_hwa,
+  `HW Multiplicative` = fit_hwm
+)
+
+acc_b <- do.call(
+  rbind,
+  lapply(models_b, function(m) as.data.frame(accuracy(m)))
+)
+
+acc_b[, c("RMSE", "MAE", "MAPE", "MASE")]
 
 ```
 
@@ -205,12 +236,47 @@ data(AirPassengers)
 
 ```{r}
 
-```
+# Auto ETS on training data
+fit_ets <- ets(train)   
+fit_ets
+fc_ets  <- forecast(fit_ets, h = h)
 
+# Plot
+autoplot(train) +
+  autolayer(test,   series = "Test (1960)", linetype = "dashed") +
+  autolayer(fit_ses,  PI = FALSE, series = "SES") +
+  autolayer(fit_holt, PI = FALSE, series = "Holt") +
+  autolayer(fit_hwa,  PI = FALSE, series = "HW Additive") +
+  autolayer(fit_hwm,  PI = FALSE, series = "HW Multiplicative") +
+  autolayer(fc_ets,   PI = FALSE, series = paste0("ETS (", fit_ets$method, ")")) +
+  labs(title = "AirPassengers: Train, Test, and 5 Forecasting Methods",
+       x = "Year", y = "Passengers (thousands)") +
+  guides(colour = guide_legend(title = "Series")) +
+  theme_minimal(base_size = 12)
+
+# Accuracy table
+
+models <- list(
+  SES = fit_ses,
+  Holt = fit_holt,
+  `HW Additive` = fit_hwa,
+  `HW Multiplicative` = fit_hwm,
+  `ETS (auto)` = fc_ets
+)
+
+acc_all <- do.call(rbind, lapply(models, function(m) as.data.frame(accuracy(m))))
+
+acc_all[, c("RMSE", "MAE", "MAPE", "MASE")]
+
+```
 
 ## Smothing Responses
 
-  - 
+  - (a) From the overlay, Holt‑Winters Multiplicative visually tracks the seasonal peaks/troughs and rising level best among the four; SES/Holt miss seasonality, HW Additive underestimates peak amplitudes.
+  
+  - (b) Using MAE, RMSE, MAPE, MASE, the HW Multiplicative method produces the best (lowest) scores among the four.
+  
+  - (c) Adding ets() (auto) usually edges out HW Multiplicative across most accuracy metrics (especially MAPE/MASE), because it can select multiplicative errors, multiplicative seasonality, and damped trend, optimizing parameters and model form via AIC. 
 
 
 
